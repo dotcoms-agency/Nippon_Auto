@@ -1,327 +1,173 @@
-import { Link } from 'react-router-dom';
-import { ChevronRight, ShieldCheck, Wrench, Globe, DollarSign, Truck, ArrowRight } from 'lucide-react';
+import { FormEvent, useMemo, useState } from 'react';
+import { ArrowUpRight, ChevronRight, CircleCheck, Headphones, HeartHandshake, Search, ShieldCheck, Truck, Wrench } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { useSiteContent, useSiteSettings, useTrucks } from '@/hooks/useData';
-import { useContent, getSetting } from '@/i18n/useContent';
+import { useSiteSettings, useTrucks } from '@/hooks/useData';
 import { useSEO } from '@/hooks/useSEO';
-import { LinkButton } from '@/components/ui/Button';
-import { LineButton } from '@/components/ui/LineButton';
-import { TruckCard } from '@/components/TruckCard';
-import { LoadingState, SkeletonCard, EmptyState } from '@/components/ui/Loading';
+import { formatJPY } from '@/lib/format';
+import type { TruckWithImages } from '@/types';
+import { EmptyState, SkeletonCard } from '@/components/ui/Loading';
+
+const HERO_IMAGE = 'https://images.pexels.com/photos/38199714/pexels-photo-38199714.jpeg?auto=compress&cs=tinysrgb&w=2200&h=1400';
+const FLEET_IMAGE = 'https://images.pexels.com/photos/35602229/pexels-photo-35602229.jpeg?auto=compress&cs=tinysrgb&w=2200&h=1100';
+const CATEGORY_IMAGES = [
+  'https://images.pexels.com/photos/4481325/pexels-photo-4481325.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100',
+  'https://images.pexels.com/photos/1267338/pexels-photo-1267338.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100',
+  'https://images.pexels.com/photos/14206821/pexels-photo-14206821.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100',
+  'https://images.pexels.com/photos/380769/pexels-photo-380769.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100',
+];
+
+interface SearchFilters {
+  make: string;
+  model: string;
+  year: string;
+  price: string;
+}
+
+interface Category {
+  title: string;
+  query: string;
+  image: string;
+}
+
+const categories: Category[] = [
+  { title: 'Light Duty', query: 'light', image: CATEGORY_IMAGES[0] },
+  { title: 'Medium Duty', query: 'medium', image: CATEGORY_IMAGES[1] },
+  { title: 'Heavy Duty', query: 'heavy', image: CATEGORY_IMAGES[2] },
+  { title: 'Commercial Vehicles', query: 'commercial', image: CATEGORY_IMAGES[3] },
+];
+
+const trustItems = [
+  { icon: ShieldCheck, title: 'Japanese Quality', description: 'Rigorous inspections ensure top tier performance and reliability.' },
+  { icon: CircleCheck, title: 'Verified Vehicles', description: 'Complete history and maintenance records provided.' },
+  { icon: HeartHandshake, title: 'Transparent Process', description: 'Clear pricing with no hidden fees or surprise costs.' },
+  { icon: Headphones, title: 'Professional Support', description: 'Expert assistance from selection to final delivery.' },
+];
+
+function getTruckImage(truck: TruckWithImages): string | undefined {
+  const featuredImage = truck.truck_images?.find((image) => image.is_featured) || truck.truck_images?.[0];
+  return featuredImage?.image_url;
+}
+
+function HomeTruckCard({ truck }: { truck: TruckWithImages }) {
+  const { t } = useLanguage();
+  const imageUrl = getTruckImage(truck);
+
+  return (
+    <Link to={`/trucks/${truck.slug}`} className="group rounded-md bg-white p-2.5 shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+      <div className="relative aspect-[1.35] overflow-hidden rounded-sm bg-neutral-100">
+        {imageUrl ? (
+          <img src={imageUrl} alt={`${truck.make} ${truck.model}`} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-neutral-400">{t('画像なし', 'No image')}</div>
+        )}
+      </div>
+      <div className="px-1 pb-1 pt-3">
+        <h3 className="truncate text-[11px] font-bold text-neutral-900">{truck.make} {truck.model}</h3>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold text-neutral-800">{formatJPY(truck.price_jpy)}</span>
+          <span className="rounded-full border border-neutral-200 px-2 py-1 text-[9px] font-medium text-neutral-600 group-hover:border-brand-red group-hover:text-brand-red">{t('詳細', 'View Details')}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 export function HomePage() {
   const { lang, t } = useLanguage();
-  const { content } = useSiteContent();
   const { settings } = useSiteSettings();
-  const { trucks, loading } = useTrucks();
-  const { getContent } = useContent();
-
-  const heroImg = 'https://images.pexels.com/photos/38199714/pexels-photo-38199714.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080';
+  const { trucks, loading, error } = useTrucks();
+  const navigate = useNavigate();
+  const [filters, setFilters] = useState<SearchFilters>({ make: '', model: '', year: '', price: '' });
+  const heroImage = settings?.hero_image_url || HERO_IMAGE;
+  const fleetImage = settings?.cta_image_url || FLEET_IMAGE;
+  const featuredTrucks = useMemo(() => trucks.slice(0, 4), [trucks]);
+  const makes = useMemo(() => Array.from(new Set(trucks.map((truck) => truck.make).filter(Boolean))), [trucks]);
+  const models = useMemo(() => Array.from(new Set(trucks.map((truck) => truck.model).filter(Boolean))), [trucks]);
 
   useSEO({
-    title: lang === 'ja' ? 'ニッポンオート - プレミアム日本製トラック' : 'Premium Japanese Truck Dealership',
-    description: lang === 'ja'
-      ? 'いすゞ、日野、三菱ふそう、UDトラックス。プレミアム日本製トラックの専門ディーラー。'
-      : 'Isuzu, Hino, Mitsubishi Fuso, UD Trucks. Your trusted dealer for premium Japanese trucks.',
-    image: heroImg,
+    title: lang === 'ja' ? 'ニッポンオート | 日本製トラック' : 'Nippon Auto | Quality Japanese Trucks',
+    description: lang === 'ja' ? '厳選された日本製トラックを世界へお届けします。' : 'Quality Japanese trucks built to move your business forward.',
+    image: heroImage,
   });
 
-  const featuredTrucks = trucks.slice(0, 6);
+  const updateFilter = (key: keyof SearchFilters, value: string): void => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
 
-  const whyItems = [
-    { icon: ShieldCheck, key: 'why_1', key_title: 'why_1_title', key_desc: 'why_1_desc' },
-    { icon: Wrench, key: 'why_2', key_title: 'why_2_title', key_desc: 'why_2_desc' },
-    { icon: Globe, key: 'why_3', key_title: 'why_3_title', key_desc: 'why_3_desc' },
-    { icon: DollarSign, key: 'why_4', key_title: 'why_4_title', key_desc: 'why_4_desc' },
-  ];
-
-  const services = [
-    { icon: Truck, title_key: 'service_1_title', desc_key: 'service_1_desc' },
-    { icon: Wrench, title_key: 'service_2_title', desc_key: 'service_2_desc' },
-    { icon: Globe, title_key: 'service_3_title', desc_key: 'service_3_desc' },
-    { icon: DollarSign, title_key: 'service_4_title', desc_key: 'service_4_desc' },
-  ];
+  const submitSearch = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const terms = Object.values(filters).filter(Boolean).join(' ');
+    navigate(terms ? `/trucks?search=${encodeURIComponent(terms)}` : '/trucks');
+  };
 
   return (
-    <div>
-      {/* Hero */}
-      <section className="relative min-h-[600px] md:min-h-[680px] flex items-center overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src={heroImg}
-            alt="Japanese trucks"
-            className="w-full h-full object-cover"
-            priority="true"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/20" />
-        </div>
-
-        <div className="relative max-w-7xl mx-auto px-4 md:px-6 w-full py-20">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-brand-red/90 px-3 py-1.5 mb-6 animate-fade-in">
-              <span className="w-2 h-2 bg-white rounded-full" />
-              <span className="text-xs font-semibold text-white uppercase tracking-wider">
-                {t('プレミアム日本製トラック', 'Premium Japanese Trucks')}
-              </span>
-            </div>
-
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight text-balance animate-fade-in-up">
-              {getContent(content, 'hero_title', '日本の_precision、トラックの卓越性', 'Japanese Precision. Trucking Excellence.')}
-            </h1>
-
-            <p className="text-lg md:text-xl text-neutral-200 mt-6 max-w-xl leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-              {getContent(content, 'hero_subtitle', 'プレミアム日本製トラックの専門ディーラー。品質と信頼の結晶。', 'Your trusted dealer for premium Japanese trucks. Where quality meets reliability.')}
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 mt-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-              <LinkButton to="/trucks" size="lg">
-                {getContent(content, 'hero_cta_primary', '在庫を見る', 'Browse Inventory')}
-                <ArrowRight className="w-5 h-5" />
-              </LinkButton>
-              <LinkButton to="/contact" variant="outline" size="lg" className="!border-white !text-white hover:!bg-white hover:!text-neutral-900">
-                {getContent(content, 'hero_cta_secondary', 'お問い合わせ', 'Contact Us')}
-              </LinkButton>
+    <div className="bg-white text-neutral-950">
+      <section className="relative min-h-[380px] overflow-visible bg-neutral-900 md:min-h-[500px]">
+        <img src={heroImage} alt="Japanese truck at a port" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/10" />
+        <div className="relative mx-auto flex min-h-[380px] max-w-[1320px] items-center px-5 pb-20 pt-14 md:min-h-[500px] md:px-10 md:pb-24">
+          <div className="max-w-[580px] text-white">
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.25em] text-white/85">Japanese Trucks • Premium Quality</p>
+            <h1 className="max-w-xl text-4xl font-extrabold leading-[0.98] tracking-[-0.04em] md:text-6xl">Quality Japanese Trucks<br />Built to Move Business.</h1>
+            <p className="mt-5 max-w-md text-xs leading-5 text-white/80 md:text-sm">Explore carefully selected Japanese trucks built for performance, reliability, and long-term value.</p>
+            <div className="mt-6 flex flex-wrap gap-2.5">
+              <Link to="/trucks" className="inline-flex items-center gap-2 rounded-full bg-brand-red px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-white transition hover:bg-brand-red-dark">{t('トラックを見る', 'Explore Trucks')}<ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              <Link to="/contact" className="inline-flex items-center rounded-full border border-white/70 px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-white transition hover:bg-white hover:text-neutral-900">{t('お問い合わせ', 'Contact Us')}</Link>
             </div>
           </div>
         </div>
+
+        <form onSubmit={submitSearch} className="absolute bottom-0 left-1/2 z-10 grid w-[calc(100%-32px)] max-w-[1160px] -translate-x-1/2 translate-y-1/2 grid-cols-2 gap-2 rounded-xl bg-white p-4 shadow-xl md:grid-cols-[1fr_1fr_1fr_1fr_auto] md:gap-3 md:p-5">
+          {[
+            { key: 'make' as const, label: 'MAKE', placeholder: 'All Makes', options: makes },
+            { key: 'model' as const, label: 'MODEL', placeholder: 'All Models', options: models },
+            { key: 'year' as const, label: 'YEAR', placeholder: 'Any Year', options: ['2025', '2024', '2023', '2022', '2021'] },
+            { key: 'price' as const, label: 'PRICE', placeholder: 'Any Price', options: ['Under ¥5M', '¥5M - ¥10M', 'Over ¥10M'] },
+          ].map((field) => (
+            <label key={field.key} className="min-w-0">
+              <span className="mb-1 block text-[8px] font-bold uppercase tracking-wider text-neutral-500">{field.label}</span>
+              <select value={filters[field.key]} onChange={(event) => updateFilter(field.key, event.target.value)} className="w-full border-0 border-b border-neutral-200 bg-white px-0 pb-2 text-[11px] text-neutral-700 outline-none focus:border-brand-red">
+                <option value="">{field.placeholder}</option>
+                {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+          ))}
+          <button type="submit" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-full bg-brand-red px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-white transition hover:bg-brand-red-dark md:col-span-1">{t('検索', 'Search Trucks')}<Search className="h-3.5 w-3.5" /></button>
+        </form>
       </section>
 
-      {/* Featured trucks */}
-      <section className="py-16 md:py-24 bg-neutral-50">
-        <div className="max-w-7xl mx-auto px-4 md:px-6">
-          <div className="flex items-end justify-between mb-10">
-            <div>
-              <span className="text-sm font-semibold text-brand-red uppercase tracking-wider">
-                {t('注目のトラック', 'Featured Trucks')}
-              </span>
-              <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 mt-2">
-                {t('最新在庫', 'Latest Inventory')}
-              </h2>
-            </div>
-            <Link to="/trucks" className="hidden md:inline-flex items-center gap-1 text-sm font-semibold text-brand-red hover:gap-2 transition-all">
-              {t('すべて見る', 'View All')}
-              <ChevronRight className="w-4 h-4" />
+      <section className="mx-auto max-w-[1320px] px-5 pb-14 pt-24 md:px-10 md:pb-20 md:pt-28">
+        <h2 className="text-2xl font-bold tracking-[-0.03em] md:text-3xl">Truck Categories</h2>
+        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+          {categories.map((category) => (
+            <Link key={category.title} to={`/trucks?search=${category.query}`} className="group relative aspect-[0.75] overflow-hidden rounded-md bg-neutral-200">
+              <img src={category.image} alt={category.title} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+              <span className="absolute left-4 top-4 max-w-[110px] text-lg font-bold leading-[1.05] text-white md:text-xl">{category.title}</span>
+              <span className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-900 transition group-hover:bg-brand-red group-hover:text-white"><ArrowUpRight className="h-4 w-4" /></span>
             </Link>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}
-            </div>
-          ) : featuredTrucks.length > 0 ? (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {featuredTrucks.map((truck) => (
-                  <TruckCard key={truck.id} truck={truck} />
-                ))}
-              </div>
-              <div className="mt-10 text-center md:hidden">
-                <LinkButton to="/trucks" variant="outline">
-                  {t('すべて見る', 'View All Trucks')}
-                </LinkButton>
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              title={t('新しいトラックが近日公開', 'New trucks coming soon')}
-              message={t('只今、新しい在庫を準備中です。しばらくお待ちください。', 'We are currently preparing new inventory. Please check back soon.')}
-            />
-          )}
+          ))}
         </div>
       </section>
 
-      {/* Company intro */}
-      <section className="py-16 md:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 md:px-6">
-          <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
-            <div>
-              <span className="text-sm font-semibold text-brand-red uppercase tracking-wider">
-                {t('会社概要', 'About Us')}
-              </span>
-              <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 mt-2 mb-6">
-                {getContent(content, 'about_title', 'ニッポンオートについて', 'About Nippon Auto')}
-              </h2>
-              <p className="text-neutral-600 leading-relaxed mb-4">
-                {getContent(content, 'about_intro', 'ニッポンオートは、日本の卓越したトラック製造の伝統をお客様にお届けするプレミアムディーラーです。', 'Nippon Auto is a premium dealer bringing the tradition of Japanese truck excellence to our customers.')}
-              </p>
-              <p className="text-neutral-600 leading-relaxed mb-6">
-                {getContent(content, 'about_story', '1995年の創業以来、ニッポンオートは日本最高のトラックメーカーから選び抜かれた車両を提供してきました。', 'Since our founding in 1995, Nippon Auto has provided carefully selected vehicles from Japan\'s finest truck manufacturers.')}
-              </p>
-              <LinkButton to="/about" variant="outline">
-                {t('詳細を見る', 'Learn More')}
-                <ArrowRight className="w-4 h-4" />
-              </LinkButton>
-            </div>
-
-            <div className="relative">
-              <img
-                src="https://images.pexels.com/photos/4895416/pexels-photo-4895416.jpeg?auto=compress&cs=tinysrgb&w=940&h=700"
-                alt="Nippon Auto dealership"
-                className="w-full h-[400px] object-cover"
-                loading="lazy"
-              />
-              <div className="absolute -bottom-6 -left-6 bg-brand-red text-white p-6 hidden md:block">
-                <span className="text-4xl font-bold block">30+</span>
-                <span className="text-sm">{t('年の実績', 'Years of Excellence')}</span>
-              </div>
-            </div>
-          </div>
+      <section className="bg-neutral-50 px-5 py-14 md:px-10 md:py-20">
+        <div className="mx-auto max-w-[1320px]">
+          <div className="mb-7 flex items-end justify-between"><h2 className="text-2xl font-bold tracking-[-0.03em] md:text-3xl">Featured Trucks</h2><Link to="/trucks" className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-brand-red">View All<ChevronRight className="h-3.5 w-3.5" /></Link></div>
+          {loading ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">{Array.from({ length: 4 }, (_, index) => <SkeletonCard key={index} />)}</div> : error ? <div className="rounded-md border border-neutral-200 bg-white py-14 text-center text-sm text-neutral-500">{t('在庫を読み込めませんでした。', 'Unable to load inventory right now.')}</div> : featuredTrucks.length > 0 ? <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">{featuredTrucks.map((truck) => <HomeTruckCard key={truck.id} truck={truck} />)}</div> : <EmptyState title={t('新しいトラックが近日公開', 'New trucks coming soon')} message={t('新しい在庫を準備中です。', 'We are currently preparing new inventory.')} />}
         </div>
       </section>
 
-      {/* Why choose us */}
-      <section className="py-16 md:py-24 bg-neutral-900 text-white">
-        <div className="max-w-7xl mx-auto px-4 md:px-6">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <span className="text-sm font-semibold text-brand-red-light uppercase tracking-wider">
-              {t('私たちの強み', 'Our Strengths')}
-            </span>
-            <h2 className="text-3xl md:text-4xl font-bold mt-2">
-              {getContent(content, 'why_title', 'なぜニッポンオートなのか', 'Why Choose Nippon Auto')}
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {whyItems.map((item, idx) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={idx}
-                  className="bg-neutral-800 p-6 border border-neutral-700 hover:border-brand-red transition-colors group"
-                >
-                  <div className="w-12 h-12 bg-brand-red/20 flex items-center justify-center mb-4 group-hover:bg-brand-red transition-colors">
-                    <Icon className="w-6 h-6 text-brand-red-light group-hover:text-white transition-colors" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">
-                    {getContent(content, item.key_title, '', '')}
-                  </h3>
-                  <p className="text-sm text-neutral-400 leading-relaxed">
-                    {getContent(content, item.key_desc, '', '')}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+      <section className="bg-neutral-950 px-5 py-10 text-white md:px-10 md:py-12">
+        <div className="mx-auto grid max-w-[1320px] grid-cols-2 gap-8 md:grid-cols-4 md:gap-10">
+          {trustItems.map((item) => { const Icon = item.icon; return <div key={item.title} className="border-l border-neutral-800 pl-4 md:pl-6"><Icon className="h-5 w-5 text-brand-red" strokeWidth={1.7} /><h3 className="mt-4 text-[11px] font-bold md:text-xs">{item.title}</h3><p className="mt-2 text-[9px] leading-4 text-neutral-400 md:text-[10px]">{item.description}</p></div>; })}
         </div>
       </section>
 
-      {/* Services preview */}
-      <section className="py-16 md:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 md:px-6">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <span className="text-sm font-semibold text-brand-red uppercase tracking-wider">
-              {t('サービス', 'Services')}
-            </span>
-            <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 mt-2">
-              {getContent(content, 'services_title', 'サービス', 'Our Services')}
-            </h2>
-            <p className="text-neutral-600 mt-4">
-              {getContent(content, 'services_intro', 'ニッポンオートは、トラックの販売から保守まで、総合的なサービスを提供します。', 'Nippon Auto offers comprehensive services from truck sales to maintenance.')}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {services.map((service, idx) => {
-              const Icon = service.icon;
-              return (
-                <div key={idx} className="border border-neutral-200 p-6 hover:shadow-lg hover:border-brand-red transition-all group">
-                  <div className="w-12 h-12 bg-brand-red-50 flex items-center justify-center mb-4 group-hover:bg-brand-red transition-colors">
-                    <Icon className="w-6 h-6 text-brand-red group-hover:text-white transition-colors" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-                    {getContent(content, service.title_key, '', '')}
-                  </h3>
-                  <p className="text-sm text-neutral-500 leading-relaxed">
-                    {getContent(content, service.desc_key, '', '')}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="text-center mt-10">
-            <LinkButton to="/services" variant="outline">
-              {t('すべてのサービスを見る', 'View All Services')}
-              <ArrowRight className="w-4 h-4" />
-            </LinkButton>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA section */}
-      <section className="relative py-20 md:py-28 overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src="https://images.pexels.com/photos/6563903/pexels-photo-6563903.jpeg?auto=compress&cs=tinysrgb&w=1920&h=800"
-            alt="Truck on highway"
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-brand-red-dark/90 to-brand-red/70" />
-        </div>
-
-        <div className="relative max-w-4xl mx-auto px-4 md:px-6 text-center">
-          <h2 className="text-3xl md:text-5xl font-bold text-white text-balance">
-            {getContent(content, 'cta_title', '理想的なトラックを見つけましょう', 'Find Your Perfect Truck')}
-          </h2>
-          <p className="text-lg text-white/90 mt-6 max-w-2xl mx-auto">
-            {getContent(content, 'cta_desc', 'ニッポンオートの専門チームが、お客様のニーズに最適なトラックをご提案します。', 'Our expert team will help you find the truck that best fits your needs.')}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
-            <LinkButton to="/trucks" variant="secondary" size="lg">
-              {t('在庫を見る', 'Browse Trucks')}
-              <ArrowRight className="w-5 h-5" />
-            </LinkButton>
-            <LineButton size="lg" />
-          </div>
-        </div>
-      </section>
-
-      {/* Contact / LINE section */}
-      <section className="py-16 md:py-20 bg-neutral-50">
-        <div className="max-w-7xl mx-auto px-4 md:px-6">
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-neutral-900 mb-4">
-                {getContent(content, 'contact_line_title', 'LINEでのお問い合わせ', 'Contact via LINE')}
-              </h2>
-              <p className="text-neutral-600 leading-relaxed mb-6">
-                {getContent(content, 'contact_line_desc', 'LINEでもお気軽にお問い合わせいただけます。', 'Feel free to contact us through LINE.')}
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <LineButton size="lg" />
-                <LinkButton to="/contact" variant="outline" size="lg">
-                  {t('その他のお問い合わせ', 'Other Inquiries')}
-                </LinkButton>
-              </div>
-            </div>
-
-            <div className="bg-white border border-neutral-200 p-8">
-              <div className="grid grid-cols-2 gap-4">
-                {settings?.phone && (
-                  <div className="border-l-2 border-brand-red pl-4">
-                    <span className="text-xs text-neutral-400 uppercase tracking-wider">{t('電話', 'Phone')}</span>
-                    <p className="text-sm font-semibold text-neutral-900 mt-1">{settings.phone}</p>
-                  </div>
-                )}
-                {settings?.email && (
-                  <div className="border-l-2 border-brand-red pl-4">
-                    <span className="text-xs text-neutral-400 uppercase tracking-wider">{t('メール', 'Email')}</span>
-                    <p className="text-sm font-semibold text-neutral-900 mt-1 break-all">{settings.email}</p>
-                  </div>
-                )}
-                {settings?.address && (
-                  <div className="border-l-2 border-brand-red pl-4 col-span-2">
-                    <span className="text-xs text-neutral-400 uppercase tracking-wider">{t('住所', 'Address')}</span>
-                    <p className="text-sm font-semibold text-neutral-900 mt-1">
-                      {lang === 'ja' ? settings.address_ja || settings.address : settings.address}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+      <section className="relative min-h-[300px] overflow-hidden bg-neutral-900 md:min-h-[360px]">
+        <img src={fleetImage} alt="Fleet of commercial trucks" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/20" />
+        <div className="relative mx-auto flex min-h-[300px] max-w-[1320px] items-center px-5 py-14 text-white md:min-h-[360px] md:px-10"><div><div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-brand-red"><Wrench className="h-3.5 w-3.5" />Premium Fleet Solutions</div><h2 className="max-w-xl text-3xl font-extrabold leading-[1.02] tracking-[-0.04em] md:text-5xl">Upgrade Your Fleet with<br />Confidence</h2><p className="mt-4 text-xs text-white/80">Discover premium commercial vehicles tailored to your business needs.</p><Link to="/trucks" className="mt-6 inline-flex rounded-full bg-brand-red px-5 py-3 text-[10px] font-bold uppercase tracking-wide text-white transition hover:bg-brand-red-dark">Browse Inventory</Link></div></div>
       </section>
     </div>
   );

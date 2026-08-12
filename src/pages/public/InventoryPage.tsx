@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Truck as TruckIcon } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTrucks } from '@/hooks/useData';
@@ -9,7 +10,12 @@ import { LoadingState, SkeletonCard, EmptyState } from '@/components/ui/Loading'
 export function InventoryPage() {
   const { lang, t } = useLanguage();
   const { trucks, loading, error } = useTrucks();
-  const [query, setQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get('search') || '');
+
+  useEffect(() => {
+    setQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   useSEO({
     title: lang === 'ja' ? 'トラック一覧' : 'Truck Inventory',
@@ -51,7 +57,7 @@ export function InventoryPage() {
             <input
               type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setSearchParams(e.target.value ? { search: e.target.value } : {}); }}
               placeholder={t('トラックを検索...', 'Search trucks...')}
               className="w-full pl-10 pr-4 py-2.5 border border-neutral-200 text-sm focus:outline-none focus:border-brand-red focus:ring-1 focus:ring-brand-red"
             />
